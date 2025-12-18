@@ -1,3 +1,13 @@
+# 필요한 라이브러리들을 설치하기 위한 파일
+fastapi
+uvicorn
+python-multipart
+torch
+torchvision
+transformers>=4.37.0  # HuggingFace 라이브러리
+accelerate            # 모델 로딩 가속
+pillow
+qwen-vl-utils         # Qwen 전용 유틸 (필수)
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.2
 aiosignal==1.4.0
