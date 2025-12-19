@@ -1,4 +1,7 @@
 # 필요한 라이브러리들을 설치하기 위한 파일
+
+--extra-index-url https://download.pytorch.org/whl/cu121
+
 fastapi
 uvicorn
 python-multipart
