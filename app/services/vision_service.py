@@ -6,7 +6,7 @@ from qwen_vl_utils import process_vision_info
 from app.core.ai_model import get_model_instance
 from app.schemas.dtos import FoodAnalysisResponse
 
-MAX_IMAGE_DIMENSION = 1280
+MAX_IMAGE_DIMENSION = 1024
 
 def preprocess_image(image_bytes: bytes) -> Image.Image:
     """이미지 리사이징 및 RGB 변환"""
