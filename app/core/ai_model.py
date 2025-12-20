@@ -1,5 +1,7 @@
+import os
 import torch
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+from peft import PeftModel  # ★ 추가된 라이브러리
 
 # 전역 변수 (싱글톤 패턴)
 _model = None
@@ -35,32 +37,44 @@ def load_model():
     device, dtype = get_device_and_dtype()
     _device = device
     
-    print(f"🔄 AI 모델 로딩 시작... (Target Device: {device.upper()})")
+    print(f"🔄 기본 Qwen 모델 로딩 중... (Target: {device.upper()})")
     
     try:
-        # 2. device_map 전략 설정
-        # CUDA(NVIDIA)는 'auto' 설정이 메모리 관리에 가장 효율적입니다.
-        # 반면, MPS(Mac)나 CPU는 'auto' 설정 시 에러가 날 수 있어 수동으로 할당합니다.
-        use_device_map = "auto" if device == "cuda" else None
-        
-        # 3. 모델 로드
-        _model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+        # 1. 기본 모델 로드 (인터넷에서 다운로드 or 캐시 사용)
+        base_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             "Qwen/Qwen2.5-VL-3B-Instruct",
             torch_dtype=dtype,
-            device_map=use_device_map,
+            # Mac(MPS)에서는 device_map="auto"가 불안정할 수 있어 수동 이동 추천
+            device_map=None 
         )
         
-        # 4. 수동 장치 이동 (MPS/CPU인 경우)
-        if not use_device_map:
-            _model.to(device)
-            
-        # 5. 프로세서 로드
+        # 2. ★ 핵심! 우리가 만든 어댑터(LoRA) 장착
+        # 경로: 프로젝트 루트 기준 (./models/food_adapter)
+        adapter_path = os.path.join(os.getcwd(), "models", "food_adapter_v1.0")
+        
+        if os.path.exists(adapter_path):
+            print(f"🧩 학습된 어댑터 합체 중... ({adapter_path})")
+            _model = PeftModel.from_pretrained(
+                base_model, 
+                adapter_path,
+                torch_dtype=dtype
+            )
+        else:
+            print(f"⚠️ 경고: 어댑터 폴더를 찾을 수 없습니다! ({adapter_path})")
+            print("   -> 기본 모델로만 동작합니다.")
+            _model = base_model
+
+        # 3. 모델을 장치(MPS/GPU)로 이동
+        _model.to(device)
+        _model.eval() # 추론 모드 전환
+
+        # 4. 프로세서 로드
         _processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
         
-        print("✅ AI 모델 로딩 완료!")
+        print("✅ AI 모델(LoRA) 로딩 완료! 준비 끝!")
         
     except Exception as e:
-        print(f"❌ 모델 로딩 중 치명적인 오류 발생: {e}")
+        print(f"❌ 모델 로딩 실패: {e}")
         raise e
 
 def get_model_instance():

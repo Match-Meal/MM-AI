@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.core.ai_model import load_model
 from app.routers import vision
+from fastapi.middleware.cors import CORSMiddleware
 
 # 1. 수명 주기(Lifespan) 관리: 서버 켜질 때 모델 로드
 @asynccontextmanager
@@ -17,6 +18,14 @@ app = FastAPI(
     description="Qwen2.5-VL based Food Analysis API",
     version="1.0.0",
     lifespan=lifespan
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # 3. 라우터 등록
