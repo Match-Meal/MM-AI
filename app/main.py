@@ -4,6 +4,8 @@ from app.core.ai_model import load_model
 from app.routers import vision
 from app.schemas.dtos import PeriodFeedbackRequest, RecommendRequest
 from app.services.agent import coach
+from fastapi.middleware.cors import CORSMiddleware
+
 
 # 1. 수명 주기(Lifespan) 관리: 서버 켜질 때 모델 로드
 @asynccontextmanager
@@ -28,8 +30,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# # 3. 라우터 등록
-# app.include_router(vision.router)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 3. 라우터 등록
+app.include_router(vision.router)
+
 
 @app.get("/")
 def health_check():

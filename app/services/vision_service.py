@@ -1,5 +1,3 @@
-# 이미지 리사이징(전처리) + 프롬프트 작성 + AI 추론 로직
-
 import io
 import json
 from PIL import Image
@@ -8,13 +6,14 @@ from qwen_vl_utils import process_vision_info
 from app.core.ai_model import get_model_instance
 from app.schemas.dtos import FoodAnalysisResponse
 
-MAX_IMAGE_DIMENSION = 1280
+MAX_IMAGE_DIMENSION = 1024
 
 def preprocess_image(image_bytes: bytes) -> Image.Image:
     """이미지 리사이징 및 RGB 변환"""
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     width, height = image.size
     
+    # 너무 큰 이미지는 리사이징 (메모리 절약 및 속도 향상)
     if width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION:
         image.thumbnail((MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION), Image.Resampling.LANCZOS)
     
@@ -28,15 +27,20 @@ async def analyze_food_image(file: UploadFile) -> FoodAnalysisResponse:
     image_bytes = await file.read()
     image = preprocess_image(image_bytes)
     
-    # 3. 프롬프트 작성 (JSON 포맷 강제)
+    # 3. 프롬프트 작성 (JSON 포맷 강제 + 한국어 전문가 페르소나)
     prompt_text = """
-    Analyze this food image. 
-    Identify the Korean food name based on visual features.
-    Provide top 3 likely candidates.
-    Return ONLY a JSON object with this format (no markdown, no extra text):
+    당신은 한국 음식 전문가입니다. 제공된 이미지를 분석하세요.
+    
+    질문: 이 음식의 이름은 무엇인가요?
+    
+    답변 조건:
+    1. 반드시 '한국어'로 음식 이름을 답하세요. (예: Kimchi Stew -> 김치찌개)
+    2. 가장 가능성이 높은 음식 1개와, 헷갈리는 후보 2개를 포함하세요.
+    3. 설명이나 마크다운(```json) 없이 오직 아래 JSON 데이터만 반환하세요.
+    
     {
-        "candidates": ["1st choice", "2nd choice", "3rd choice"],
-        "best_candidate": "1st choice"
+        "best_candidate": "가장 확실한 음식명",
+        "candidates": ["후보1", "후보2", "후보3"]
     }
     """
     
@@ -76,15 +80,24 @@ async def analyze_food_image(file: UploadFile) -> FoodAnalysisResponse:
         generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
     )[0]
 
-    # 7. JSON 파싱 및 반환
+    # 7. JSON 파싱 및 반환 (핵심 수정 부분)
+    
+    # (1) 먼저 마크다운 기호(```json) 등을 제거하여 'clean_text'를 만듭니다.
+    clean_text = output_text.replace("```json", "").replace("```", "").strip()
+
     try:
-        clean_text = output_text.replace("```json", "").replace("```", "").strip()
+        # (2) AI가 말을 잘 들어서 JSON 형태일 경우
         data = json.loads(clean_text)
         return FoodAnalysisResponse(**data)
+        
     except json.JSONDecodeError:
-        # 파싱 실패 시 원본 텍스트라도 반환 (디버깅용)
-        print(f"JSON Parsing Error. Raw output: {output_text}")
+        # (3) AI가 학습된 본능대로 단답형("닭갈비")만 뱉었을 경우 -> 이게 정답입니다.
+        print(f"💡 JSON 파싱 실패 (단답형 응답 감지): {clean_text}")
+        
+        # 혹시 모를 줄바꿈이나 공백 제거 후 첫 줄만 가져오기
+        final_answer = clean_text.split('\n')[0].strip()
+        
         return FoodAnalysisResponse(
-            candidates=[],
-            best_candidate="분석 실패 (형식 오류)"
+            best_candidate=final_answer,     # 예: "닭갈비"
+            candidates=[final_answer]        # 후보 리스트에도 넣어줌
         )
