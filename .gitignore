@@ -159,6 +159,8 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv_312
+.venv_312/
 env/
 venv/
 ENV/
@@ -254,4 +256,10 @@ $RECYCLE.BIN/
 
 # 모델 파일 (너무 커서 Git에 안 올라감, 보통 따로 관리)
 *.pt
-*.pth
+*.pth.venv_312/
+
+*.whl
+*.csv
+chroma_db/
+check_agent_alt.py
+inspect_*.py
