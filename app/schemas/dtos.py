@@ -12,3 +12,43 @@ class FoodAnalysisResponse(BaseModel):
 class ChatRequest(BaseModel):
     user_id: int
     message: str
+    
+# 1. 공통 모델
+class UserProfile(BaseModel):
+    name: str
+    age: int
+    gender: str
+    bmi: float
+    bmi_status: str
+    allergies: Optional[str] = ""
+    diseases: Optional[str] = ""
+
+class IntakeSummary(BaseModel):
+    calories: float
+    sodium: float
+    sugar: float
+
+# 2. 기간 분석용 모델
+class PeriodInfo(BaseModel):
+    start_date: str
+    end_date: str
+    total_days: int
+    recorded_meals: int
+
+class PeriodNutritionStats(BaseModel):
+    avg_calories: float
+    total_sodium: float
+    total_sugar: float
+
+# [API 1 요청] 기간별 식단 피드백
+class PeriodFeedbackRequest(BaseModel):
+    user_profile: UserProfile
+    period_info: PeriodInfo
+    nutrition_stats: PeriodNutritionStats
+    menu_list: List[str]
+
+# [API 2 요청] 메뉴 추천
+class RecommendRequest(BaseModel):
+    user_profile: UserProfile
+    current_intake: IntakeSummary
+    meal_type: str

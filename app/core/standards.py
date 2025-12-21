@@ -7,6 +7,7 @@ NUTRITION_STANDARDS = {
 }
 
 def get_recommended_ratio(age: int):
+    if age < 19: return NUTRITION_STANDARDS["19-29"] # 미성년자는 20대 기준 적용 (임시)
     if 19 <= age <= 29: return NUTRITION_STANDARDS["19-29"]
     if 30 <= age <= 49: return NUTRITION_STANDARDS["30-49"]
     if 50 <= age <= 64: return NUTRITION_STANDARDS["50-64"]
