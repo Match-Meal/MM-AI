@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 async def lifespan(app: FastAPI):
     print("🚀 MatchMeal AI Server Starting...")
     # [RAG 테스트 모드] 이미지 추론 모델 로딩 생략
-    # load_model()
+    load_model()
     print("⚠️ 이미지 모델(Qwen) 로딩이 비활성화되었습니다. (RAG 기능만 모드)")
     
     # 벡터 DB 초기화 및 데이터 적재
