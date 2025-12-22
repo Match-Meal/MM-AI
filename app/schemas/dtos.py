@@ -7,17 +7,13 @@ from typing import List, Optional
 class FoodAnalysisResponse(BaseModel):
     candidates: List[str]  # ["김치찌개", "부대찌개", "김치찜"]
     best_candidate: str    # "김치찌개" (1순위)
-    
-# (나중에 챗봇용 DTO도 여기에 추가하면 됩니다)
-class ChatRequest(BaseModel):
-    user_id: int
-    message: str
-    
-# 1. 공통 모델
+
 class UserProfile(BaseModel):
     name: str
     age: int
     gender: str
+    height_cm: float = 0.0
+    weight_kg: float = 0.0
     bmi: float
     bmi_status: str
     allergies: Optional[str] = ""
@@ -27,6 +23,21 @@ class IntakeSummary(BaseModel):
     calories: float
     sodium: float
     sugar: float
+
+# [API 2 요청] 메뉴 추천
+class RecommendRequest(BaseModel):
+    user_profile: UserProfile
+    current_intake: IntakeSummary
+    meal_type: str
+    flavors: List[str] = [] # 매운맛, 짠맛 등
+
+
+
+# [API 3 요청] 일반 대화 (히스토리 포함)
+class ChatRequest(BaseModel):
+    user_profile: UserProfile
+    history: List[dict] # [{"role": "user", "content": "..."}, ...]
+    message: str
 
 # 2. 기간 분석용 모델
 class PeriodInfo(BaseModel):
@@ -47,8 +58,9 @@ class PeriodFeedbackRequest(BaseModel):
     nutrition_stats: PeriodNutritionStats
     menu_list: List[str]
 
-# [API 2 요청] 메뉴 추천
-class RecommendRequest(BaseModel):
+# [API New] 기간별 식단 추천
+class MealPlanRequest(BaseModel):
     user_profile: UserProfile
-    current_intake: IntakeSummary
-    meal_type: str
+    period_info: PeriodInfo
+    flavors: List[str] = []
+
