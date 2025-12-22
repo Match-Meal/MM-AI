@@ -12,8 +12,8 @@ class MatchMealCoach:
     def __init__(self):
         # GMS 환경 설정
         self.llm = ChatOpenAI(
-            model="gpt-4o-mini", # 또는 gpt-4o-mini
-            temperature=0,
+            model="gpt-5-mini", # 또는 gpt-4o-mini
+            # temperature=0,
             api_key=os.getenv("OPENAI_API_KEY"),
             base_url=os.getenv("OPENAI_API_BASE")
         )
