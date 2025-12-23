@@ -3,6 +3,7 @@
 accelerate
 aiohappyeyeballs
 aiohttp
+aiomysql
 aiosignal
 annotated-doc
 annotated-types
