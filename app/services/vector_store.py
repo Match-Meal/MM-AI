@@ -133,9 +133,66 @@ class FoodVectorStore:
             self.db.add_documents(documents)
 
     # ★ 검색 (필터 기능 포함)
-    def search_food(self, query: str, k=3, filter: dict = None):
+    def search_food(self, query: str, k=5, filter=None):
         if filter:
             return self.db.similarity_search(query, k=k, filter=filter)
         return self.db.similarity_search(query, k=k)
 
+class ToolVectorStore:
+    def __init__(self):
+        self.embedding_function = OpenAIEmbeddings(
+            model="text-embedding-3-small",
+            api_key=os.getenv("OPENAI_API_KEY"),
+            base_url=os.getenv("OPENAI_API_BASE")
+        )
+        
+        self.db = Chroma(
+            persist_directory=PERSIST_DIRECTORY,
+            embedding_function=self.embedding_function,
+            collection_name="tool_collection"
+        )
+
+    def index_tools(self, tools: list):
+        """LangChain 도구 리스트를 받아 벡터 DB에 저장합니다."""
+        # 기존 데이터 확인 (간단하게 이름으로 중복 체크하거나, 매번 덮어쓰기)
+        # 여기서는 매번 초기화 후 다시 저장하는 방식이 안전 (도구 설명 변경 반영)
+        
+        # 컬렉션 초기화가 까다로우므로, 간단히 모든 도구를 가져와서 이름 비교?
+        # 또는 그냥 중복 각오하고 업데이트?
+        # Chroma의 add_documents는 ID를 지정하면 업데이트가 됨.
+        
+        documents = []
+        for tool in tools:
+            # 도구 이름과 설명을 저장
+            content = f"도구 이름: {tool.name}\n설명: {tool.description}"
+            meta = {"name": tool.name}
+            # ID는 도구 이름으로 고정하여 중복 적재 방지/업데이트
+            documents.append(Document(page_content=content, metadata=meta, id=tool.name))
+            
+        if documents:
+            # IDs list
+            ids = [doc.id for doc in documents]
+            # 이미 존재하는지 확인하지 않고 upsert(add는 id 있으면 에러날 수 있음, Chroma 최신은 upsert 지원 확인 필요)
+            # Langchain Chroma wrapper: add_documents usually adds. 
+            # safe approach: delete and add, or use specific update method.
+            # let's try add_documents with ids. If langchain chroma doesn't support upsert by default, we might get dupes if ids not used.
+            # Actually, Langchain Chroma `add_documents` usually generates distinct IDs if not provided.
+            # If we provide IDs, it might error if exists.
+            
+            # Resetting collection for tools is safer as tools are few.
+            try:
+                # This is a bit hacky, but effective for small toolsets
+                existing_ids = self.db.get()['ids']
+                if existing_ids:
+                    self.db.delete(ids=existing_ids)
+            except:
+                pass
+                
+            self.db.add_documents(documents)
+            print(f"✅ {len(documents)}개의 도구가 인덱싱되었습니다.")
+
+    def search_tools(self, query: str, k=3):
+        return self.db.similarity_search(query, k=k)
+
 food_store = FoodVectorStore()
+tool_store = ToolVectorStore()

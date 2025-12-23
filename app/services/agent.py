@@ -9,32 +9,61 @@ from app.services.tools import (
     recommend_food_from_db,
     calculate_exercise_burn,
     compare_foods,
-    generate_shopping_list
+    generate_shopping_list,
+    recommend_seasonal_food,
+    recommend_food_for_symptom,
+    get_recipe_procedure,
+    check_food_compatibility,
+    calculate_maintenance_calories,
+    suggest_healthy_alternative,
+    calculate_water_needs,
+    recommend_snack,
+    analyze_nutrient_deficiency
 )
+from app.services.tool_selector import tool_selector
 
 load_dotenv()
 
 class MatchMealCoach:
     def __init__(self):
-        # GMS 환경 설정
-        self.llm = ChatOpenAI(
-            model="gpt-5-mini", # 또는 gpt-4o-mini
+        # 1. Fast LLM (Tool Selection, Chat)
+        self.fast_llm = ChatOpenAI(
+            model="gpt-4o-mini",
             temperature=1,
             api_key=os.getenv("OPENAI_API_KEY"),
             base_url=os.getenv("OPENAI_API_BASE")
         )
+
+        # 2. Heavy LLM (Complex Reasoning)
+        self.heavy_llm = ChatOpenAI(
+            model="gpt-5-mini", # 실제 사용 모델명 확인 필요
+            temperature=1,
+            api_key=os.getenv("OPENAI_API_KEY"),
+            base_url=os.getenv("OPENAI_API_BASE"),
+            streaming=True # 스트리밍 활성화
+        )
         
-        self.tools = [
+        # 전체 도구 리스트 (Map for Selection)
+        self.all_tools = [
             analyze_health_and_nutrition, 
             recommend_food_from_db,
             calculate_exercise_burn,
             compare_foods,
-            generate_shopping_list
+            generate_shopping_list,
+            recommend_seasonal_food,
+            recommend_food_for_symptom,
+            get_recipe_procedure,
+            check_food_compatibility,
+            calculate_maintenance_calories,
+            suggest_healthy_alternative,
+            calculate_water_needs,
+            recommend_snack,
+            analyze_nutrient_deficiency
         ]
+        self.tools_map = {tool.name: tool for tool in self.all_tools}
         
-        # ★ 고도화된 시스템 프롬프트
-        self.prompt = ChatPromptTemplate.from_messages([
-            ("system", """
+        # 시스템 프롬프트 (Heavy/Fast 공용 구조, 상황에 따라 다를 수 있음)
+        self.system_prompt_template = """
             당신은 '냠냠코치'입니다. 사용자의 [건강 프로필]과 [식사 기록]을 분석하여, 친구처럼 친근하지만 전문적인 영양 조언을 제공하는 AI 전문가입니다.
 
             [사용자 프로필]
@@ -46,7 +75,8 @@ class MatchMealCoach:
 
             ---
             [답변 형식 가이드 (필수 준수)]
-            모든 답변은 사용자가 핵심을 먼저 파악할 수 있도록 **3줄 요약**으로 시작하세요.
+            1. 모든 답변은 사용자가 핵심을 먼저 파악할 수 있도록 **3줄 요약**으로 시작하세요.
+            2. **3줄 요약**이 끝난 후에는 반드시 `---` (대시 3개)를 입력하여 요약과 상세 내용을 구분해주세요.
             
             [형식 예시]
             **📋 3줄 요약**
@@ -55,6 +85,7 @@ class MatchMealCoach:
             3. (핵심 내용 3)
 
             ---
+
             (이후 상세 답변 작성...)
             ---
             [대화 컨텍스트]
@@ -62,57 +93,34 @@ class MatchMealCoach:
             {history}
             
             ---
-            [임무 1: 기간별 식단 피드백 모드]
-            1. **도구 사용 필수:** 반드시 `analyze_health_and_nutrition` 도구를 사용하여 신체/영양 분석 결과를 먼저 확보하세요.
-            2. **통계 분석:** 제공된 '기간 평균 칼로리', '나트륨 총량' 등이 사용자의 권장량 대비 적절한지 평가하세요.
-            3. **패턴 발견:** 자주 먹은 메뉴 목록을 보고 구체적인 식습관 패턴을 지적하세요.
-            4. **[중요] 능동적 제안:** 사용자의 요청이 없더라도, 발견된 문제점을 해결할 수 있는 대체/보완 메뉴를 **`recommend_food_from_db` 도구를 사용하여 제안**하세요. (예: "나트륨이 높으니 저염식 메뉴인 OOO를 추천합니다.")
-
-            ---
-            [임무 2: 맞춤 메뉴 추천 모드]
-            1. **도구 사용 필수:** 반드시 `recommend_food_from_db` 도구를 사용하세요.
-            2. **취향 반영:** 사용자의 [식성/취향]에 있는 키워드(예: 매운, 달달한)를 검색 쿼리에 적극 포함하세요.
-            3. **비교 질문 대응:** 만약 "A랑 B 중에 뭐가 더 좋아?" 같은 질문이 나오면 `compare_foods` 도구를 사용하세요.
-
-            ---
-            [임무 3: 식단 짜주기 (Meal Plan)]
-            1. 사용자가 구체적인 식단을 요청하면, **RAG 도구(`recommend_food_from_db`)를 여러 번 호출**하여 아침/점심/저녁 메뉴를 구성하세요.
-            2. 단순히 "샐러드 드세요"가 아니라, "닭가슴살 샐러드(200kcal)와 고구마(150kcal)"처럼 DB에 있는 실제 메뉴명과 칼로리를 언급해야 합니다.
-            3. **장보기 리스트:** 식단 제안 후, 사용자가 "장보기 리스트 뽑아줘"라고 하면 `generate_shopping_list` 도구를 사용하세요.
-
-            ---
-            [임무 4: 운동 및 칼로리 상담]
-            1. "이거 먹으면 운동 얼마나 해야해?" 또는 "운동 추천해줘" 같은 질문에는 `calculate_exercise_burn` 도구를 활용하여 구체적인 수치(kcal)를 제시하세요.
+            [임무 가이드]
+            1. **도구 활용:** 제공된 도구가 있다면 적극 활용하세요. 내부 함수명은 절대 노출하지 마세요.
+            2. **안전:** 알레르기/질병 주의 식단을 철저히 지키세요.
+            3. **제안:** 수동적인 답변보다 능동적인 메뉴 제안을 선호합니다.
+            """
             
-            ---
-            [화법 및 용어 가이드]
-            1. **자연스러운 표현:** 답변 시 `analyze_health_and_nutrition`, `recommend_food_from_db`와 같은 **내부 함수명(영어)을 절대 그대로 노출하지 마세요.**
-               - (O) "회원님의 건강 상태를 분석해보니..."
-               - (X) "analyze_health_and_nutrition 도구를 실행한 결과..."
-               - (O) "저염식 메뉴로 OOO를 찾아봤어요."
-               - (X) "recommend_food_from_db 도구로 검색했습니다."
-
-            ---
-            [절대 안전 수칙]
-            1. **알레르기 제로:** 알레르기 유발 가능성이 있는 메뉴는 절대 추천하지 마세요.
-            2. **질병 금기:** 질환에 해로운 음식(짠 것, 단 것 등)은 피하세요.
-            """),
+        self.prompt = ChatPromptTemplate.from_messages([
+            ("system", self.system_prompt_template),
             ("human", "{input}"),
             ("placeholder", "{agent_scratchpad}"),
         ])
 
-    def run_agent(self, context_str: str, profile: dict, history: list = [], flavors: list = []):
+    async def stream_agent_response(self, context_str: str, profile: dict, history: list = [], flavors: list = [], use_fast_model: bool = False):
+        """
+        제너레이터 함수: 답변을 스트리밍으로 yield 합니다.
+        """
         # History 포맷팅
         history_text = ""
         for h in history:
             role = "사용자" if h.get("role") == "user" else "AI"
             history_text += f"- {role}: {h.get('content')}\n"
 
+        # 0. Partial Prompt 준비
         partial_prompt = self.prompt.partial(
             age=profile.get('age', 0),
             gender=profile.get('gender', 'Unknown'),
-            height=profile.get('height_cm', 170.0), # Default 값 추가
-            weight=profile.get('weight_kg', 60.0),  # Default 값 추가
+            height=profile.get('height_cm', 170.0),
+            weight=profile.get('weight_kg', 60.0),
             bmi=profile.get('bmi', 0.0),
             bmi_status=profile.get('bmi_status', 'Unknown'),
             diseases=profile.get('diseases') or "없음",
@@ -120,10 +128,56 @@ class MatchMealCoach:
             flavors=", ".join(flavors) if flavors else "지정 안 함",
             history=history_text if history_text else "없음"
         )
+
+        # 1. 도구 선별 (Vector Search + Fast LLM)
+        # 모든 요청에 대해 도구 선별을 수행해 Context 최적화
+        try:
+            selected_tool_names = tool_selector.select_tools(context_str, self.tools_map)
+        except Exception as e:
+            print(f"Tool Selection Failed: {e}")
+            selected_tool_names = []
+
+        selected_tools = [self.tools_map[name] for name in selected_tool_names if name in self.tools_map]
         
-        agent = create_tool_calling_agent(self.llm, self.tools, partial_prompt)
-        executor = AgentExecutor(agent=agent, tools=self.tools, verbose=True)
+        # 2. 모델 선택 및 실행 전략
+        # - use_fast_model=True (Chat): Fast LLM 사용. 도구가 없으면 Chain으로, 있으면 Agent로.
+        # - use_fast_model=False (Analysis): Heavy LLM 사용.
         
-        return executor.invoke({"input": context_str})["output"]
+        # 도구가 없는데 Heavy Model을 써야 하는 경우? (심층 추론 필요 시) -> 분석 모드면 Heavy Model.
+        # 도구가 있는데 Fast Model을 써야 하는 경우? (가벼운 검색 등) -> 가능.
+        
+        llm_to_use = self.fast_llm if use_fast_model else self.heavy_llm
+        
+        # 3. Agent Execution (Streaming)
+        if not selected_tools:
+            # 도구 없음 -> 단순 LLM Chain (Streaming)
+            # AgentExecutor 없이 바로 stream
+            print(f"🚀 Running {'FAST' if use_fast_model else 'HEAVY'} Chain (No Tools)")
+            chain = partial_prompt | llm_to_use
+            async for chunk in chain.astream({"input": context_str}):
+                if chunk.content:
+                    yield chunk.content
+        else:
+            # 도구 있음 -> AgentExecutor (Streaming)
+            print(f"🛠️ Running {'FAST' if use_fast_model else 'HEAVY'} Agent with tools: {selected_tool_names}")
+            agent = create_tool_calling_agent(llm_to_use, selected_tools, partial_prompt)
+            executor = AgentExecutor(agent=agent, tools=selected_tools, verbose=True)
+            
+            # astream_events를 사용하여 'on_chat_model_stream' 이벤트만 필터링하여 yield
+            # AgentExecutor의 astream은 중간 단계(Action 등)를 포함할 수 있어 처리가 필요함.
+            # 가장 간단한 방법: final response token만 yield 하도록 이벤트 필터링.
+            
+            async for event in executor.astream_events({"input": context_str}, version="v1"):
+                kind = event["event"]
+                # LLM이 스트리밍하는 토큰 중 '최종 답변'에 해당하는 것만 추출해야 함.
+                # Tool Calling Agent 구조상, LLM이 Tool Call을 할 때는 'tool_calls' 청크를 뱉고,
+                # 마지막에 최종 답변을 할 때는 'content' 청크를 뱉음.
+                # 따라서 on_chat_model_stream 이벤트에서 content가 있는 경우만 yield하면 됨.
+                # 단, Tool Input 생성 시의 content는 보통 비어있거나 'tool_calls' 필드에 있음.
+                
+                if kind == "on_chat_model_stream":
+                    content = event["data"]["chunk"].content
+                    if content:
+                        yield content
 
 coach = MatchMealCoach()

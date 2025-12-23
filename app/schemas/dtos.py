@@ -9,6 +9,7 @@ class FoodAnalysisResponse(BaseModel):
     best_candidate: str    # "김치찌개" (1순위)
 
 class UserProfile(BaseModel):
+    user_id: Optional[int] = None
     name: str
     age: int
     gender: str
@@ -26,41 +27,39 @@ class IntakeSummary(BaseModel):
 
 # [API 2 요청] 메뉴 추천
 class RecommendRequest(BaseModel):
-    user_profile: UserProfile
-    current_intake: IntakeSummary
+    user_profile: Optional[UserProfile] = None
+    current_intake: Optional[IntakeSummary] = None
     meal_type: str
     flavors: List[str] = [] # 매운맛, 짠맛 등
 
-
-
 # [API 3 요청] 일반 대화 (히스토리 포함)
 class ChatRequest(BaseModel):
-    user_profile: UserProfile
-    history: List[dict] # [{"role": "user", "content": "..."}, ...]
+    user_profile: Optional[UserProfile] = None
+    history: List[dict] = [] # [{"role": "user", "content": "..."}, ...]
     message: str
 
 # 2. 기간 분석용 모델
 class PeriodInfo(BaseModel):
     start_date: str
     end_date: str
-    total_days: int
-    recorded_meals: int
+    total_days: int = 0
+    recorded_meals: int = 0
 
 class PeriodNutritionStats(BaseModel):
-    avg_calories: float
-    total_sodium: float
-    total_sugar: float
+    avg_calories: float = 0.0
+    total_sodium: float = 0.0
+    total_sugar: float = 0.0
 
 # [API 1 요청] 기간별 식단 피드백
 class PeriodFeedbackRequest(BaseModel):
-    user_profile: UserProfile
+    user_profile: Optional[UserProfile] = None
     period_info: PeriodInfo
-    nutrition_stats: PeriodNutritionStats
-    menu_list: List[str]
+    nutrition_stats: Optional[PeriodNutritionStats] = None
+    menu_list: List[str] = []
 
 # [API New] 기간별 식단 추천
 class MealPlanRequest(BaseModel):
-    user_profile: UserProfile
+    user_profile: Optional[UserProfile] = None
     period_info: PeriodInfo
     flavors: List[str] = []
 
