@@ -36,7 +36,7 @@ class HistoryService:
             db.add(new_entry)
             await db.commit()
             await db.refresh(new_entry)
-            print(f"✅ History Saved: ID={new_entry.ai_chatbot_id}, Type={ai_type}")
+            print(f"✅ History Saved: ID={new_entry.id}, Type={ai_type}")
             return new_entry
         except Exception as e:
             print(f"❌ Failed to save history: {e}")
@@ -49,7 +49,7 @@ class HistoryService:
         """
         try:
             # 최근 순으로 조회
-            stmt = select(AiChatbot).where(AiChatbot.user_id == user_id).order_by(AiChatbot.ai_chatbot_id.desc()).limit(limit)
+            stmt = select(AiChatbot).where(AiChatbot.user_id == user_id).order_by(AiChatbot.id.desc()).limit(limit)
             result = await db.execute(stmt)
             rows = result.scalars().all()
             

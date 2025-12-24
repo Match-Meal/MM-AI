@@ -28,7 +28,7 @@ class MatchMealCoach:
     def __init__(self):
         # 1. Fast LLM (Tool Selection, Chat)
         self.fast_llm = ChatOpenAI(
-            model="gpt-4o-mini",
+            model="gpt-4.1-mini",
             temperature=1,
             api_key=os.getenv("OPENAI_API_KEY"),
             base_url=os.getenv("OPENAI_API_BASE")
@@ -62,9 +62,15 @@ class MatchMealCoach:
         ]
         self.tools_map = {tool.name: tool for tool in self.all_tools}
         
+        # 페르소나 정의
+        self.PERSONA_PROMPTS = {
+            "coach": "친절하고 전문적인 영양 조언을 제공하는 AI 전문가입니다. 사용자를 존중하며 공손한 말투(존댓말)를 사용하세요.",
+            "friend": "30년 지기 '찐친'입니다. 격식 없이 편안한 반말을 사용하세요. 거친 농담과 유머를 섞어 대화하지만, 영양 정보만큼은 친구를 위해 진심으로 정확하게 조언해주세요. (예: '야, 너 살 좀 찐 거 같은데?', '이건 몸에 안 좋으니까 먹지 마라 좀')"
+        }
+        
         # 시스템 프롬프트 (Heavy/Fast 공용 구조, 상황에 따라 다를 수 있음)
         self.system_prompt_template = """
-            당신은 '냠냠코치'입니다. 사용자의 [건강 프로필]과 [식사 기록]을 분석하여, 친구처럼 친근하지만 전문적인 영양 조언을 제공하는 AI 전문가입니다.
+            당신은 '냠냠코치'입니다. 사용자의 [건강 프로필]과 [식사 기록]을 분석하여, {persona_instruction}
 
             [사용자 프로필]
             - 기본 정보: {age}세 / {gender} / {height}cm / {weight}kg
@@ -105,7 +111,7 @@ class MatchMealCoach:
             ("placeholder", "{agent_scratchpad}"),
         ])
 
-    async def stream_agent_response(self, context_str: str, profile: dict, history: list = [], flavors: list = [], use_fast_model: bool = False):
+    async def stream_agent_response(self, context_str: str, profile: dict, history: list = [], flavors: list = [], use_fast_model: bool = False, persona: str = "coach"):
         """
         제너레이터 함수: 답변을 스트리밍으로 yield 합니다.
         """
@@ -116,7 +122,10 @@ class MatchMealCoach:
             history_text += f"- {role}: {h.get('content')}\n"
 
         # 0. Partial Prompt 준비
+        persona_instruction = self.PERSONA_PROMPTS.get(persona, self.PERSONA_PROMPTS["coach"])
+        
         partial_prompt = self.prompt.partial(
+            persona_instruction=persona_instruction,
             age=profile.get('age', 0),
             gender=profile.get('gender', 'Unknown'),
             height=profile.get('height_cm', 170.0),
@@ -161,7 +170,7 @@ class MatchMealCoach:
             # 도구 있음 -> AgentExecutor (Streaming)
             print(f"🛠️ Running {'FAST' if use_fast_model else 'HEAVY'} Agent with tools: {selected_tool_names}")
             agent = create_tool_calling_agent(llm_to_use, selected_tools, partial_prompt)
-            executor = AgentExecutor(agent=agent, tools=selected_tools, verbose=True)
+            executor = AgentExecutor(agent=agent, tools=selected_tools, verbose=True, handle_parsing_errors=True)
             
             # astream_events를 사용하여 'on_chat_model_stream' 이벤트만 필터링하여 yield
             # AgentExecutor의 astream은 중간 단계(Action 등)를 포함할 수 있어 처리가 필요함.
