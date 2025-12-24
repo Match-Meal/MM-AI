@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import FastAPI, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
@@ -9,7 +10,7 @@ from app.services.vector_store import tool_store
 from fastapi.middleware.cors import CORSMiddleware
 from app.services.history_service import history_service
 from app.core.database import AsyncSessionLocal
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 # --- Helper: Stream & Save ---
 async def stream_and_save(generator, user_id: int, ai_type: str, question: str, ref_date=None):
@@ -37,21 +38,39 @@ async def stream_and_save(generator, user_id: int, ai_type: str, question: str, 
 # 1. 수명 주기(Lifespan) 관리: 서버 켜질 때 모델 로드
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 MatchMeal AI Server Starting...")
-    # [RAG 테스트 모드] 이미지 추론 모델 로딩 생략
-    load_model()
-    print("⚠️ 이미지 모델(Qwen) 로딩이 비활성화되었습니다. (RAG 기능만 모드)")
+    print("🚀 MatchMeal AI 서버 시작 중...")
     
-    # 벡터 DB 초기화 및 데이터 적재
-    from app.services.vector_store import food_store
-    food_store.load_from_csvs()
+    async def initialize_data():
+        try:
+            print("🔍 AI 모델 로딩 시도...")
+            load_model()
+            print("✅ AI 모델 로딩 완료 (RAG 모드)")
+            
+            print("💾 벡터 데이터베이스 데이터 로딩 및 인덱싱 시작 (백그라운드)...")
+            from app.services.vector_store import food_store
+            food_store.load_from_csvs()
+            print("✅ 벡터 데이터베이스 준비 완료")
+            
+            print("🛠️ 도구 인덱싱 중...")
+            tool_store.index_tools(coach.all_tools)
+            print("✅ 도구 인덱싱 완료")
+            print("✨ 모든 초기화 작업이 백그라운드에서 완료되었습니다.")
+        except Exception as e:
+            print(f"❌ 백그라운드 초기화 중 오류 발생: {e}")
+
+    # 초기화 작업을 백그라운드 태스크로 시작
+    init_task = asyncio.create_task(initialize_data())
     
-    # 도구 인덱싱 (매번 초기화하여 최신 반영)
-    print("🛠️ 도구 인덱싱 시작...")
-    tool_store.index_tools(coach.all_tools)
-    
-    yield
-    print("👋 Server Shutting Down...")
+    try:
+        print("� API 서비스 시작 준비 완료 (초기화는 백그라운드에서 진행 중)")
+        yield
+    except BaseException as b:
+        if not isinstance(b, asyncio.CancelledError):
+            print(f"⚠️ lifespan 종료 중 예외 발생: {type(b).__name__}: {b}")
+    finally:
+        if not init_task.done():
+            init_task.cancel()
+        print("👋 AI 서버가 종료됩니다.")
 
 # 2. 앱 생성
 app = FastAPI(
@@ -98,10 +117,10 @@ async def period_feedback(req: PeriodFeedbackRequest):
     - 일 평균 칼로리: {avg_cal:.1f}kcal
     - 기간 총 나트륨: {total_sod:.1f}mg
     - 기간 총 당류: {total_sug:.1f}g
-
+ 
     [섭취한 메뉴 목록]
     {', '.join(req.menu_list) if req.menu_list else '기록된 메뉴 없음'}
-
+ 
     위 데이터를 바탕으로 사용자의 식습관을 평가하고 개선점을 알려주세요.
     """
     
@@ -169,7 +188,7 @@ async def meal_plan(req: MealPlanRequest):
     위 기간 동안 사용자가 실천할 수 있는 구체적인 식단표를 짜주세요.
     - **도구 사용 필수:** `recommend_food_from_db` 도구를 사용하여 각 끼니에 적합한 메뉴를 찾아주세요.
     - **구성:** 아침, 점심, 저녁 메뉴와 칼로리를 포함해야 합니다.
-    - **형식:** 날짜별로 구분하여 보기 좋게 출력해주세요. (마크다운 표 또는 리스트 형식)
+    - **형식:** 날짜별로 구분하여 보기 좋게 출력해주세요. (반드시 리스트 형식을 사용하세요)
     """
     
     # use_fast_model=False (Heavy)

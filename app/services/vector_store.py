@@ -134,9 +134,16 @@ class FoodVectorStore:
 
     # ★ 검색 (필터 기능 포함)
     def search_food(self, query: str, k=5, filter=None):
-        if filter:
-            return self.db.similarity_search(query, k=k, filter=filter)
-        return self.db.similarity_search(query, k=k)
+        try:
+            # 데이터가 없는 경우 검색 생략 (에러 방지)
+            if self.db._collection.count() == 0: return []
+            
+            if filter:
+                return self.db.similarity_search(query, k=k, filter=filter)
+            return self.db.similarity_search(query, k=k)
+        except Exception as e:
+            print(f"Food Search Error: {e}")
+            return []
 
 class ToolVectorStore:
     def __init__(self):
@@ -193,6 +200,18 @@ class ToolVectorStore:
 
     def search_tools(self, query: str, k=3):
         return self.db.similarity_search(query, k=k)
+
+    def all_tools_docs(self):
+        """저장된 모든 도구 문서를 반환합니다."""
+        res = self.db.get()
+        docs = []
+        if not res or not res['ids']: return []
+        for i in range(len(res['ids'])):
+            docs.append(Document(
+                page_content=res['documents'][i],
+                metadata=res['metadatas'][i]
+            ))
+        return docs
 
 food_store = FoodVectorStore()
 tool_store = ToolVectorStore()
