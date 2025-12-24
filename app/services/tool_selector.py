@@ -44,21 +44,22 @@ class ToolSelector:
         Step 2: LLM이 최종 선별
         """
         # 1. Vector Search for Candidates (Recall)
-        # 모든 도구를 다 보여주기엔 토큰 낭비가 심할 수 있으나, 도구가 적다면(10개 미만) 그냥 다 보여주는 게 나을 수도 있음.
-        # 현재 도구 5개 -> 그냥 5개 다 후보로 줘도 됨. 하지만 확장성을 위해 검색 로직 유지.
-        # 검색 개수 k를 도구 전체 개수보다 조금 작거나 같게 설정.
-        
-        # 현재 도구 개수가 적으므로, 검색보다는 '모든 도구'를 후보로 주는 전략 or 검색
-        # 여기서는 "Vector DB 활용"이 목표이므로 검색을 수행함.
+        # 도구 개수가 매우 적으므로(약 14개), 벡터 검색보다는 
+        # 그냥 모든 도구를 후보로 LLM에게 전달하는 것이 더 정확하고 안정적입니다.
+        # (Chroma HNSW의 "ef or M is too small" 에러 방지 목적 포함)
         try:
-            candidates = tool_store.search_tools(query, k=5)
+            # 전체 도구 리스트 가져오기
+            candidates = tool_store.all_tools_docs()
+            
+            # 만약 도구가 너무 많아지면(예: 20개 이상) 그때만 벡터 검색 수행
+            if len(candidates) > 20:
+                candidates = tool_store.search_tools(query, k=10)
         except Exception as e:
-            # 검색 실패 시 빈 리스트 (또는 전체 도구 fallback)
-            print(f"Tool Search Error: {e}")
-            candidates = []
+            print(f"Tool Selection Error: {e}")
+            # Fallback: 검색 실패 시 빈 리스트
+            return []
 
         if not candidates:
-            # 검색 결과 없으면 도구 선택 안 함 (안전)
             return []
             
         # 후보군 텍스트 생성
