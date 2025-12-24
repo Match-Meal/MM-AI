@@ -190,7 +190,7 @@ async def chat(req: ChatRequest):
     user_id = req.user_profile.user_id if req.user_profile else 0
 
     # use_fast_model=True (Fast)
-    generator = coach.stream_agent_response(req.message, user_data, history=req.history, use_fast_model=True)
+    generator = coach.stream_agent_response(req.message, user_data, history=req.history, use_fast_model=True, persona=req.persona)
     
     return StreamingResponse(
         stream_and_save(generator, user_id, "CHAT", req.message, date.today()),

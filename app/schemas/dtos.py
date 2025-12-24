@@ -37,6 +37,7 @@ class ChatRequest(BaseModel):
     user_profile: Optional[UserProfile] = None
     history: List[dict] = [] # [{"role": "user", "content": "..."}, ...]
     message: str
+    persona: str = "coach"  # 'coach' | 'friend'
 
 # 2. 기간 분석용 모델
 class PeriodInfo(BaseModel):
