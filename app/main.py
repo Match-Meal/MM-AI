@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
     async def initialize_data():
         try:
             print("🔍 AI 모델 로딩 시도...")
-            load_model()
+            # load_model()
             print("✅ AI 모델 로딩 완료 (RAG 모드)")
             
             print("💾 벡터 데이터베이스 데이터 로딩 및 인덱싱 시작 (백그라운드)...")

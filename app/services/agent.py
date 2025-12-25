@@ -24,6 +24,58 @@ from app.services.tool_selector import tool_selector
 
 load_dotenv()
 
+import uuid
+from typing import Any, List, Optional
+from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.outputs import ChatResult
+
+class SanitizedChatOpenAI(ChatOpenAI):
+    def _generate(
+        self,
+        messages: List[Any],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        # 부모 클래스의 _generate 호출
+        chat_result = super()._generate(messages, stop, run_manager, **kwargs)
+        
+        # 결과 검사 및 수정
+        if chat_result.generations:
+            for generation in chat_result.generations:
+                message = generation.message
+                if hasattr(message, 'tool_calls') and message.tool_calls:
+                    for tool_call in message.tool_calls:
+                        # tool_call id가 없으면 생성
+                        if not tool_call.get('id'):
+                            new_id = f"call_{str(uuid.uuid4()).replace('-', '')[:24]}"
+                            tool_call['id'] = new_id
+                            # print(f"⚠️ [SanitizedChatOpenAI] Fixed missing tool_call_id: {new_id}")
+        
+        return chat_result
+
+    async def _agenerate(
+        self,
+        messages: List[Any],
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        # 비동기 호출에 대해서도 동일하게 처리
+        chat_result = await super()._agenerate(messages, stop, run_manager, **kwargs)
+        
+        if chat_result.generations:
+            for generation in chat_result.generations:
+                message = generation.message
+                if hasattr(message, 'tool_calls') and message.tool_calls:
+                    for tool_call in message.tool_calls:
+                        if not tool_call.get('id'):
+                            new_id = f"call_{str(uuid.uuid4()).replace('-', '')[:24]}"
+                            tool_call['id'] = new_id
+                            # print(f"⚠️ [SanitizedChatOpenAI] Fixed missing tool_call_id (Async): {new_id}")
+        
+        return chat_result
+
 class MatchMealCoach:
     def __init__(self):
         # 1. Fast LLM (Tool Selection, Chat)
@@ -34,8 +86,8 @@ class MatchMealCoach:
             base_url=os.getenv("OPENAI_API_BASE")
         )
 
-        # 2. Heavy LLM (Complex Reasoning)
-        self.heavy_llm = ChatOpenAI(
+        # 2. Heavy LLM (Complex Reasoning) -> SanitizedChatOpenAI 적용
+        self.heavy_llm = SanitizedChatOpenAI(
             model="gpt-5.2", 
             temperature=0.7, # 안정성을 위해 약간 낮춤
             api_key=os.getenv("OPENAI_API_KEY"),
@@ -184,21 +236,28 @@ class MatchMealCoach:
                 max_iterations=25 # 식단표 등 복잡한 작업 위해 반복 횟수 상향
             )
             
-            # astream_events를 사용하여 'on_chat_model_stream' 이벤트만 필터링하여 yield
-            # AgentExecutor의 astream은 중간 단계(Action 등)를 포함할 수 있어 처리가 필요함.
-            # 가장 간단한 방법: final response token만 yield 하도록 이벤트 필터링.
-            
-            async for event in executor.astream_events({"input": context_str}, version="v1"):
-                kind = event["event"]
-                # LLM이 스트리밍하는 토큰 중 '최종 답변'에 해당하는 것만 추출해야 함.
-                # Tool Calling Agent 구조상, LLM이 Tool Call을 할 때는 'tool_calls' 청크를 뱉고,
-                # 마지막에 최종 답변을 할 때는 'content' 청크를 뱉음.
-                # 따라서 on_chat_model_stream 이벤트에서 content가 있는 경우만 yield하면 됨.
-                # 단, Tool Input 생성 시의 content는 보통 비어있거나 'tool_calls' 필드에 있음.
-                
-                if kind == "on_chat_model_stream":
-                    content = event["data"]["chunk"].content
-                    if content:
-                        yield content
+            try:
+                # astream_events를 사용하여 'on_chat_model_stream' 이벤트만 필터링하여 yield
+                async for event in executor.astream_events({"input": context_str}, version="v1"):
+                    kind = event["event"]
+                    
+                    # LLM이 스트리밍하는 토큰 중 '최종 답변'에 해당하는 것만 추출해야 함.
+                    if kind == "on_chat_model_stream":
+                        # 데이터 구조 안전하게 접근
+                        data = event.get("data", {})
+                        chunk = data.get("chunk")
+                        
+                        # chunk가 있고, tool_calls가 없는(순수 텍스트) 경우만 yield
+                        if chunk and hasattr(chunk, 'content') and chunk.content:
+                            # tool_call_chunks가 있으면(즉, 도구 호출 중이면) 건너뜀
+                            if hasattr(chunk, 'tool_call_chunks') and chunk.tool_call_chunks:
+                                continue
+                                
+                            yield chunk.content
+            except Exception as e:
+                # OpenAI 400 Error (Invalid type) 등을 포착하여 사용자에게 알림
+                print(f"Agent Execution Error: {e}")
+                yield f"\n\n[시스템 알림] 죄송합니다. 답변 생성 중 일시적인 오류가 발생했습니다. (Error: {str(e)[:50]}...)"
+                # 로깅 또는 재시도 로직 추가 가능
 
 coach = MatchMealCoach()
