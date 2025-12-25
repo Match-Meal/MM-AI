@@ -44,13 +44,24 @@ class SanitizedChatOpenAI(ChatOpenAI):
         if chat_result.generations:
             for generation in chat_result.generations:
                 message = generation.message
+                
+                # 1. message.tool_calls 수정 (LangChain 내부용)
                 if hasattr(message, 'tool_calls') and message.tool_calls:
                     for tool_call in message.tool_calls:
-                        # tool_call id가 없으면 생성
                         if not tool_call.get('id'):
                             new_id = f"call_{str(uuid.uuid4()).replace('-', '')[:24]}"
                             tool_call['id'] = new_id
-                            # print(f"⚠️ [SanitizedChatOpenAI] Fixed missing tool_call_id: {new_id}")
+                            # print(f"⚠️ [SanitizedChatOpenAI] Fixed missing tool_call_id (Prop): {new_id}")
+
+                # 2. message.additional_kwargs['tool_calls'] 수정 (OpenAI 전송용)
+                if hasattr(message, 'additional_kwargs'):
+                    raw_tool_calls = message.additional_kwargs.get('tool_calls', [])
+                    if raw_tool_calls:
+                        for raw_tc in raw_tool_calls:
+                            if not raw_tc.get('id'):
+                                new_id = f"call_{str(uuid.uuid4()).replace('-', '')[:24]}"
+                                raw_tc['id'] = new_id
+                                # print(f"⚠️ [SanitizedChatOpenAI] Fixed missing tool_call_id (Raw): {new_id}")
         
         return chat_result
 
@@ -67,19 +78,31 @@ class SanitizedChatOpenAI(ChatOpenAI):
         if chat_result.generations:
             for generation in chat_result.generations:
                 message = generation.message
+                
+                # 1. message.tool_calls 수정
                 if hasattr(message, 'tool_calls') and message.tool_calls:
                     for tool_call in message.tool_calls:
                         if not tool_call.get('id'):
                             new_id = f"call_{str(uuid.uuid4()).replace('-', '')[:24]}"
                             tool_call['id'] = new_id
-                            # print(f"⚠️ [SanitizedChatOpenAI] Fixed missing tool_call_id (Async): {new_id}")
+                            # print(f"⚠️ [SanitizedChatOpenAI] Fixed missing tool_call_id (Async Prop): {new_id}")
+
+                # 2. message.additional_kwargs['tool_calls'] 수정
+                if hasattr(message, 'additional_kwargs'):
+                    raw_tool_calls = message.additional_kwargs.get('tool_calls', [])
+                    if raw_tool_calls:
+                        for raw_tc in raw_tool_calls:
+                            if not raw_tc.get('id'):
+                                new_id = f"call_{str(uuid.uuid4()).replace('-', '')[:24]}"
+                                raw_tc['id'] = new_id
+                                # print(f"⚠️ [SanitizedChatOpenAI] Fixed missing tool_call_id (Async Raw): {new_id}")
         
         return chat_result
 
 class MatchMealCoach:
     def __init__(self):
-        # 1. Fast LLM (Tool Selection, Chat)
-        self.fast_llm = ChatOpenAI(
+        # 1. Fast LLM (Tool Selection, Chat) -> SanitizedChatOpenAI 적용
+        self.fast_llm = SanitizedChatOpenAI(
             model="gpt-4.1-mini",
             temperature=1,
             api_key=os.getenv("OPENAI_API_KEY"),
