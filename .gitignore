@@ -261,5 +261,6 @@ $RECYCLE.BIN/
 *.whl
 *.csv
 chroma_db/
+chroma_db_backup/
 check_agent_alt.py
 inspect_*.py

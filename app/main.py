@@ -2,6 +2,10 @@ import asyncio
 from fastapi import FastAPI, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+
+# 환경변수 로드 (DB 연결 전 필수)
+load_dotenv()
 from app.core.ai_model import load_model
 from app.routers import vision
 from app.schemas.dtos import PeriodFeedbackRequest, RecommendRequest, ChatRequest, MealPlanRequest
