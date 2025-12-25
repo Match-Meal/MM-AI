@@ -2,6 +2,10 @@ import asyncio
 from fastapi import FastAPI, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+
+# 환경변수 로드 (DB 연결 전 필수)
+load_dotenv()
 from app.core.ai_model import load_model
 from app.routers import vision
 from app.schemas.dtos import PeriodFeedbackRequest, RecommendRequest, ChatRequest, MealPlanRequest
@@ -43,7 +47,7 @@ async def lifespan(app: FastAPI):
     async def initialize_data():
         try:
             print("🔍 AI 모델 로딩 시도...")
-            load_model()
+            # load_model()
             print("✅ AI 모델 로딩 완료 (RAG 모드)")
             
             print("💾 벡터 데이터베이스 데이터 로딩 및 인덱싱 시작 (백그라운드)...")
